@@ -1,0 +1,676 @@
+---
+title: "Aplicación de Simulación Montecarlo a precios de mercado"
+author: "Equipo B"
+date: "5/14/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+
+
+*Abstract* 
+
+El mercado financiero es un sistema complejo y díficil de modelar. Para los inversionistas actualmente es importante modelar probabilidades de predicciones de inversiones financieras para tomar decisiones de financiamiento y así, recibir un rendimiento. Veremos cómo las simulaciones de Monte Carlo de caminatas aleatorias se puede utilizar para modelar la probabilidad de rendimientos futuros de las acciones. El método que se pondrá en práctica utiliza Movimiento Browniano Geometrico para simular los precios de las acciones.  
+
+Los parámetros principales que determinan el resultado de las simulaciones son: el rendimiento medio de una acción y la desviación estándar de los rendimientos históricos.  
+
+El objetivo de este proyecto pretende mostrar que las simulaciones de Monte Carlo tienen el potencial de convertirse en una herramienta poderosa que puede ayudar a predecir y modelar los precios de las acciones, utilizando datos actuales y reales.  
+
+**Introducción**
+
+El mercado financiero es un sistema estocástico complejo, compuesto por varios factores que operan con una cantidad limitada de información, esto con lleva un alto nivel de incertidumbre y aleatoriedad. Estos componentes son las empresas en el mercado de valores, los inversores y el ciclo económico. Otros factores son la especulación creada por ciudadanos comunes, la tasa de interés de losprestamos, los recursos naturales y la política. Todos estos factores interactuan entre sí, lo que hace que el mercado financiero sea un sistema complejo.
+
+Para los administradores de fondos es muy importante construir modelos que puedan predecir los precios de las acciones, ya que manejan grandes cantidades de dinero que pertenecen tanto a empresas como a inversionistas. Después, estos modelos se desarrollan en programas informáticos reales que pueden ejecutar transacciones a una gran velocidad para obtener ganancias. Por lo tanto, los métodos numéricos, el diseño de algoritmos, el análisis de big data y la teoría de la probabilidad son relevantes en el campo de las finanzas computacionales.
+
+En el sector financiero y empresarial, el método  de Monte Carlo se utiliza principalmente para evaluar riesgos. Los analistas de riesgos comerciales pueden tener en cuenta parámetros como los niveles de venta, las tasas de interés y el cambio de las leyes fiscales para evaluar posibles escenarios comerciales futuros. El método también se utiliza para la fijación de precios de opciones, un instrumento financiero con múltiples fuentes de incertidumbre.
+
+**Práctico**
+
+## DATOS
+Descargamos los precios de *Bitcoin* y *Tesla* en **yahoo finance**
+Se desea analizar las características de un mercado con precios volátiles y otro con ganancias recientes destacables. 
+Como queremos hacer una *proyección de los precios a un año* se tomó un año de información para cada compañía.
+```{r}
+setwd("~/Desktop/ITAM/11 semestre 2021/Simulacion/Trabajo Final")
+datosB <- read.csv("BTC-USD.csv", header = TRUE)
+datosT <- read.csv("TSLA.MX.csv", header = TRUE)
+
+head(datosB)
+head(datosT)
+```
+
+Tomamos los precios de cierre
+```{r}
+datosB <- datosB[,c(1,5)]
+datosT <- datosT[,c(1,5)]
+
+head(datosB)
+head(datosT)
+
+summary(datosB)
+summary(datosT)
+```
+En *Bitcoin* tenemos tres valores nulos, por lo tanto eliminamos esos renglones
+```{r}
+(r = which(datosB$Close == "null"))
+datosB <- datosB[-r,]
+```
+
+
+### Modificar tipo de variables.
+Para poder hacer los cálculos cambiamos el tipo de variable a numérico de los precios.
+```{r}
+
+datosB$Date <- as.Date(datosB$Date,format ='%Y-%m-%d') 
+
+#* %Y para el año con 4 dígitos,
+#* %m para el mes en numero decimal,
+#* %d para el día del mes porque es un número decimal.
+datosB$Close <- as.character(datosB$Close)
+datosB$Close <- as.numeric(datosB$Close)
+
+datosT$Date <- as.Date(datosT$Date,format ='%Y-%m-%d') 
+#datos2$Close <- as.numeric(datos2$Close)
+
+head(datosB)
+head(datosT)
+
+summary(datosB)
+summary(datosT)
+
+```
+
+**Proceso de Wiener**
+Es un proceso estocástico, markoviano de espacio y parámetro contínuo. 
+Un proceso estocástico ${(S_t, t\geq0)}$ es de Wiener si cumple:
+
+* $S_0 = 0$
++ $S_t \sim N(0,t)$ para toda $t$
++ $(S_t, t\geq0)$ tiene incrementos estacionarios e independientes
+
+En nuestro caso, es necesario desarrollar un modelo más complejo que se ajuste a las características de nuestros datos. 
+
+* Sea $S_t$ el precio histórico de nuestros datos en el tiempo $t$. 
++ Definimos el rendimiento como el cambio porcentual en el precio de nuestros datos 
++ Es importante integrar variables para la volatilidad, indispensable en el mundo real. 
+
+Entonces, un proceso de Wiener geométrico se define como:
+
+* $dS_t = \mu S_tdt + \sigma S_tdB_t$
+
+o bien,
+
+* $S_t = S_0e^{(\mu - \frac{\sigma^2}{2})t + \sigma B_t }$
+
+Donde $S_t$ es el precio de una acción S en el momento $t$ y $B_t$ como una variable distribuida normal con $\mu = 0$ y $\sigma = 1$
+
+
+## RENDIMIENTOS
+
+Para asegurarnos de que el precio sea siempre positivo utilizamos Log rendimientos. 
+
+* $ln(\frac{S_t}{S_{t-1}})$
+
+```{r}
+nB <- dim(datosB)[1]
+nT <- dim(datosT)[1]
+
+rendimientoB <- vector(mode= "numeric",length=nB)
+rendimientoT <- vector(mode= "numeric",length=nT)
+
+for (i in 1:(nB-1)) {
+  rendimientoB[i] <- log(datosB$Close[i]/datosB$Close[i+1])
+}
+
+for (i in 1:(nT-1)) {
+  rendimientoT[i] <- log(datosT$Close[i]/datosT$Close[i+1])
+
+}
+datosB <- cbind(datosB, rendimientoB)
+datosT <- cbind(datosT, rendimientoT)
+```
+
+# MEDIA Y DESVIACIÓN ESTANDAR 
+La media y la desviación estándar son dos variables comúnes que se utilizan en estadística. La media nos dice que tan grande es la capacidad "en promedio", mientras que la desviación estándar nos dicen cuanto difiere la capacidad.
+
+Para el cálculo de la media y la desviación estandar de los rendimientos utilizamos dos métodos:
+
+Media y desviación no ponderada: mismo peso para todas las observaciones.
+
+* $\mu = \frac{1}{N}\sum\limits_{i=1}^{N} ln(\frac{S_i}{S_{i-1}})$
+* $\sigma^2 = \frac{1}{N}\sum\limits_{i=1}^{N} (ln(\frac{S_i}{S_{i-1}})-\mu)^2$
+
+
+Media y desviación ponderada: le otorga mayor peso a las últimas observaciones
+
+* $\hat{\mu} = \frac{\sum\limits_{i=1}^{N}{w_i ln(\frac{S_i}{S_{i-1}})}}{\sum\limits_{i=1}^N{w_i}}$
+
+* $\hat{\sigma}^2 = \frac{\sum\limits_{i=1}^{N}{w_i}}{(\sum\limits_{i=1}^{N}{w_i})^2-\sum\limits_{i=1}^{N}{w_i}^2}{\sum\limits_{i=1}^{N}{w_i(ln(\frac{S_i}{S_{i-1}})-\mu)^2}}$
+
+donde $w_i = (1-\alpha)^i$
+
+Nota: tomaremos $\alpha= \frac{2}{31}$
+
+¿Por qué usar un método "extra"? 
+Debido a su naturaleza, los precios de mercado dependen más de aquellos que son más recientes que de los de hace mucho tiempo. Se espera que dar una ponderación mayor a los datos actuales, nos ofrezca un resultado más certero. 
+
+
+```{r}
+# Método 1
+(mu_RDB_m1 <- mean(rendimientoB[-nB])) # quite el último renglón porque es 0
+(sd_RDB_m1 <- sqrt(var(rendimientoB[-nB]))) 
+
+(mu_RDT_m1 <- mean(rendimientoT[-nT]))
+(sd_RDT_m1 <- sqrt(var(rendimientoT[-nT])))
+
+# Método 2
+alfa <- 2/31
+             
+i1 <- seq(from=(nB-1), to=1,by=-1)
+i2 <- seq(from=(nT-1), to=1,by=-1)
+
+w1 <- (1-alfa)^i1
+w2 <- (1-alfa)^i2
+
+(mu_RDB_m2 <- sum(w1*rendimientoB[-nB])/(sum(w1)))
+(sd_RDB_m2 <-sum(w1)/(sum(w1)^2-sum(w1^2))*sum(w1*((rendimientoB[-nB]-mu_RDB_m2)^2)) )
+
+(mu_RDT_m2 <- sum(w2*rendimientoT[-nT])/(sum(w2)))
+(sd_RDT_m2 <-sum(w2)/(sum(w2)^2-sum(w2^2))*sum(w2*((rendimientoT[-nT]-mu_RDT_m2)^2)) )
+
+```
+## Cálculo de precios 
+La idea de simular precios de acciones futuros y modelar probabilidad de los precios de las acciones es generar miles de paseos aleatorios basados en un estocástico modelo de precio de las acciones.  
+
+Realizamos la función para generar los precios a un año.
+$S_i = S_{i-1}e^{(\mu - \frac{\sigma^2}{2})dt + \sigma\sqrt{dt}N(0,1) }$
+```{r}
+
+f_precio <- function(n, TT, mu, sigma, S0){ 
+  dt <- TT/(n-1) # incrementos de tiempo
+  Precio <- vector(mode= "numeric",length=(n-1))
+  Precio[1] <- S0
+  for (i in 2:(n-1)) {
+    Precio[i] <- Precio[i-1]*exp((mu-sigma^2/2)*dt + sigma*sqrt(dt)*rnorm(1))
+  }
+  return(Precio)
+}
+```
+La simulación en sí es el acto de seleccionar números aleatorios de esta función de distribución de probabilidad. Al muestrear, digamos, diez valores de la distribución, tenemos una idea de cómo podría comportarse la acción en los próximos diez días. Sin embargo, una sola simulación realmente no nos dará una idea de la probabilidad de los rendimientos futuros de las acciones. 
+
+Hicimos 10,000 simulaciones (Proceso Browniano) con la proyección de los precios y la variable de pérdida a 1 año para ambos métodos.
+```{r}
+set.seed(10)
+sim <- 10000 
+diasB <- 1:(nB-1) # dias al año de Bitcoin
+diasT <- 1:(nT-1) # días al año de Tesla
+
+# Precios
+Precio_DB_m1 <- matrix(NA, ncol=sim,nrow  = (nB-1))
+Precio_DB_m2 <- matrix(NA, ncol=sim,nrow = (nB-1))
+Precio_DT_m1 <- matrix(NA, ncol=sim,nrow =  (nT-1))
+Precio_DT_m2 <- matrix(NA, ncol=sim,nrow = (nT-1))
+
+# Media por día
+mu_DB_m1 <- vector(mode = "numeric", length = (nB-1))
+mu_DB_m2 <- vector(mode = "numeric", length = (nB-1))
+mu_DT_m1 <- vector(mode = "numeric", length = (nT-1))
+mu_DT_m2 <- vector(mode = "numeric", length = (nT-1))
+
+# Desviacion estandar por día
+sd_DB_m1 <- vector(mode = "numeric", length = (nB-1))
+sd_DB_m2 <- vector(mode = "numeric", length = (nB-1))
+sd_DT_m1 <- vector(mode = "numeric", length = (nT-1))
+sd_DT_m2 <- vector(mode = "numeric", length = (nT-1))
+
+# Variable de Pérdida
+L_DB_m1 <- matrix(NA, ncol=sim,nrow  = (nB-1))
+L_DB_m2 <- matrix(NA, ncol=sim,nrow  = (nB-1))
+L_DT_m1 <- matrix(NA, ncol=sim,nrow = (nT-1))
+L_DT_m2 <- matrix(NA, ncol=sim,nrow = (nT-1))
+
+for (i in 1:sim) {
+    Precio_DB_m1[,i] <- f_precio(nB, 1, mu_RDB_m1, sd_RDB_m1, datosB$Close[1])
+    Precio_DB_m2[,i] <- f_precio(nB, 1, mu_RDB_m2, sd_RDB_m2, datosB$Close[1])
+    L_DB_m1[,i] <- datosB$Close[1]-Precio_DB_m1[,i]
+    L_DB_m2[,i] <- datosB$Close[1]-Precio_DB_m2[,i]
+}
+
+for (i in 1:sim) {
+    Precio_DT_m1[,i] <- f_precio(nT, 1,mu_RDT_m1, sd_RDT_m1, datosT$Close[1])
+    Precio_DT_m2[,i] <- f_precio(nT, 1,mu_RDT_m2, sd_RDT_m2, datosT$Close[1])
+    L_DT_m1[,i] <- datosT$Close[1]-Precio_DT_m1[,i]
+    L_DT_m2[,i] <- datosT$Close[1]-Precio_DT_m2[,i]
+}
+
+# Media y desviación estandar por los dias al año de Bitcoin
+for (j in diasB) { #j=días
+    mu_DB_m1[j] <- mean(Precio_DB_m1[j,])
+    mu_DB_m2[j] <- mean(Precio_DB_m2[j,])
+    sd_DB_m1[j] <- sqrt(var((Precio_DB_m1[j,])))
+    sd_DB_m2[j] <- sqrt(var((Precio_DB_m2[j,])))
+}
+
+# Media y desviación estandar por los dias al año de Tesla
+for (j in diasT) { #j=días
+    mu_DT_m1[j] <- mean(Precio_DT_m1[j,])
+    mu_DT_m2[j] <- mean(Precio_DT_m2[j,])
+    sd_DT_m1[j] <- sqrt(var((Precio_DT_m1[j,])))
+    sd_DT_m2[j] <- sqrt(var((Precio_DT_m2[j,])))
+}
+```
+
+Los intervalos de confianza son un par o varios pares de números entre los cuales se estima que estará cierto valor desconocido respecto de un parámetro poblacional con un determinado nivel de confianza. Formalmente, estos números determinan un intervalo, que se calcula a partir de datos de una muestra, y el valor desconocido es una parámetro poblacional. 
+
+
+Entonces, $S_t \sim N(\mu,\sigma_t^2)$ y $ln(S_t) \sim LogNorm(\mu,\sigma_t^2)$ $\\$ 
+
+Tenemos que $Z = \frac{ln(S_t)-ln(S_0)}{\sigma_t\sqrt{\eta_t}} \sim N(0,1)$ donde $\eta_t$ es la posición al tiempo t y $\sigma_t$ : sigma al tiempo t $\\$
+
+Así, $P(Z_{\frac{\alpha}{2}}  < Z < Z_{1-{\frac{\alpha}{2}}} ) = 1-\alpha$ $\\$
+
+$\Rightarrow$ $P(Z_{\frac{\alpha}{2}}  \sigma_t \sqrt{\eta_t} < ln(S_t)-ln(S_0) < Z_{1-\frac{\alpha}{2}} \sigma_t \sqrt{\eta_t} ) = 1-\alpha$ $\\$
+
+donde $ln(\frac{S_t}{S_0})$ son los rendimientos
+
+Es decir, el intervalo de confianza de los rendimientos es: 
+$(Z_{\frac{\alpha}{2}}  \sigma_t \sqrt{\eta_t} , Z_{1-\frac{\alpha}{2}} \sigma_t \sqrt{\eta_t})$ $\\$
+
+Por lo tanto, el intervalo de confianza de los precios es:
+$(p_t \pm Z_{\frac{\alpha}{2}} \sigma \sqrt{\eta_t})$
+
+Y para obtener el precio al tiempo t: $\\$
+
+$p_t = \frac{1}{m} \sum\limits_{i=1}^{m} p_{it}$ $\\$
+
+donde $p_{it}$ es el precio de la i-ésima simulación al tiempo $t$ y $m$ es el número de simulaciónes
+                  
+
+Entonces, generamos así los intervalos de confianza al 5% para los precios de ambas compañías:
+```{r}
+
+f_intervalos<- function(n,TT,S0, alpha){ # intervalo de confianza de los rendimientos
+  intervalos <- matrix(NA,nrow = n, ncol=2)
+  dt <-  TT/(n-1) # partición diaria, TT=1 año
+  a <- seq(0,TT, by=dt) # secuencia 
+  intervalos[,1] <- qnorm(alpha/2)*sqrt(a)
+  intervalos[,2] <- qnorm(1-alpha/2)*sqrt(a)
+  return(intervalos)
+}
+
+ICR_DB <- f_intervalos(nB,1,datosB$Close[1],0.05)
+ICR_DT <- f_intervalos(nT,1,datosT$Close[1],0.05)
+
+
+ICR_DB <- ICR_DB[-nB,]
+ICR_DT <- ICR_DT[-nT,]
+
+# Intervalos de confianza de los precios 
+IC_DB_m1 <- mu_DB_m1+ICR_DB*sd_DB_m1
+IC_DB_m2 <- mu_DB_m2+ICR_DB*sd_DB_m2
+IC_DT_m1 <- mu_DT_m1+ICR_DT*sd_DT_m1
+IC_DT_m2 <- mu_DT_m2+ICR_DT*sd_DT_m2
+```
+
+Gráficamos el Proceso Estocástico de los precios de ambas compañías con los 2 métodos. 
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+PB1 <- as.data.frame(Precio_DB_m1)
+PB2 <- as.data.frame(Precio_DB_m2)
+PT1 <- as.data.frame(Precio_DT_m1)
+PT2 <- as.data.frame(Precio_DT_m2)
+
+LB1 <- as.data.frame(L_DB_m1)
+LB2 <- as.data.frame(L_DB_m2)
+LT1 <- as.data.frame(L_DT_m1)
+LT2 <- as.data.frame(L_DT_m2)
+
+ggplot(PB1, aes(x=diasB)) + 
+  geom_line(aes(y=PB1[,1]),color = "lightpink", size=0.3)+
+  geom_line(aes(y=PB1[,2]), size=0.3,color="lightskyblue")+
+  geom_line(aes(y=PB1[,3]), size=0.3,color = "mediumpurple1")+
+  geom_line(aes(y=PB1[,4]), size=0.3, color="green2")+
+  geom_line(aes(y=PB1[,5]), size=0.3, color="turquoise3")+
+  geom_line(aes(y=PB1[,6]), size=0.3, color="tan1")+
+  geom_line(aes(y=PB1[,7]), size=0.3, color="violetred1") +
+  geom_line(aes(y=PB1[,8]), size=0.3, color="gold") +
+  geom_line(aes(y=PB1[,9]), size=0.3, color="wheat2") +
+  geom_line(aes(y=PB1[,10]),size=0.3, color="slategray3")+ 
+  xlab("Dias") + ylab("Precio BTC") + 
+  labs(title =  "Proceso Estocástico BTC Modelo 1") + 
+  geom_line( aes(y =IC_DB_m1[,1]),color = "red" )+ 
+  geom_line( aes(y =IC_DB_m1[,2]),color = "red" )
+
+
+ggplot(PB2, aes(x=diasB)) + 
+  geom_line(aes(y=PB2[,1]),color = "lightpink", size=0.3)+
+  geom_line(aes(y=PB2[,2]), size=0.3,color="lightskyblue")+
+  geom_line(aes(y=PB2[,3]), size=0.3,color = "mediumpurple1")+
+  geom_line(aes(y=PB2[,4]), size=0.3, color="green2")+
+  geom_line(aes(y=PB2[,5]), size=0.3, color="turquoise3")+
+  geom_line(aes(y=PB2[,6]), size=0.3, color="tan1")+
+  geom_line(aes(y=PB2[,7]), size=0.3, color="violetred1") +
+  geom_line(aes(y=PB2[,8]), size=0.3, color="gold") +
+  geom_line(aes(y=PB2[,9]), size=0.3, color="wheat2") +
+  geom_line(aes(y=PB2[,10]),size=0.3, color="slategray3")+ 
+  xlab("Dias") + ylab("Precio BTC") + 
+  labs(title =  "Proceso Estocástico BTC Modelo 2") +
+  geom_line( aes(y =IC_DB_m2[,1]),color = "red" )+ 
+  geom_line( aes(y =IC_DB_m2[,2]),color = "red" )
+
+ggplot(PT1, aes(x=diasT)) + 
+  geom_line(aes(y=PT1[,1]),color = "lightpink", size=0.3)+
+  geom_line(aes(y=PT1[,2]), size=0.3,color="lightskyblue")+
+  geom_line(aes(y=PT1[,3]), size=0.3,color = "mediumpurple1")+
+  geom_line(aes(y=PT1[,4]), size=0.3, color="green2")+
+  geom_line(aes(y=PT1[,5]), size=0.3, color="turquoise3")+
+  geom_line(aes(y=PT1[,6]), size=0.3, color="tan1")+
+  geom_line(aes(y=PT1[,7]), size=0.3, color="violetred1") +
+  geom_line(aes(y=PT1[,8]), size=0.3, color="gold") +
+  geom_line(aes(y=PT1[,9]), size=0.3, color="wheat2") +
+  geom_line(aes(y=PT1[,10]),size=0.3, color="slategray3")+ 
+  xlab("Dias") + ylab("Precio TSLA") + 
+  labs(title =  "Proceso Estocástico TSLA Modelo 1") + 
+  geom_line( aes(y =IC_DT_m1[,1]),color = "red" )+ 
+  geom_line( aes(y =IC_DT_m1[,2]),color = "red" )
+
+ggplot(PT2, aes(x=diasT)) + 
+  geom_line(aes(y=PT2[,1]),color = "lightpink", size=0.3)+
+  geom_line(aes(y=PT2[,2]), size=0.3,color="lightskyblue")+
+  geom_line(aes(y=PT2[,3]), size=0.3,color = "mediumpurple1")+
+  geom_line(aes(y=PT2[,4]), size=0.25, color="green2")+
+  geom_line(aes(y=PT2[,5]), size=0.3, color="turquoise3")+
+  geom_line(aes(y=PT2[,6]), size=0.3, color="tan1")+
+  geom_line(aes(y=PT2[,7]), size=0.3, color="violetred1") +
+  geom_line(aes(y=PT2[,8]), size=0.3, color="gold") +
+  geom_line(aes(y=PT2[,9]), size=0.3, color="wheat2") +
+  geom_line(aes(y=PT2[,10]),size=0.3, color="slategray3")+ 
+  xlab("Dias") + ylab("Precio TSLA") + 
+  labs(title =  "Proceso Estocástico TSLA Modelo 2") + 
+  geom_line( aes(y =IC_DT_m2[,1]),color = "red" )+ 
+  geom_line( aes(y =IC_DT_m2[,2]),color = "red" )
+```
+Cálculamos la media y la desviación estandar que tienen los precios en un año.
+```{r}
+# Media
+(mu_DBt_m1 <- mean(Precio_DB_m1[(nB-1),]))
+(mu_DBt_m2 <- mean(Precio_DB_m2[(nB-1),]))
+(mu_DTt_m1 <- mean(Precio_DT_m1[(nT-1),]))
+(mu_DTt_m2 <- mean(Precio_DT_m2[(nT-1),]))
+
+# desviación estandar
+(sd_DBt_m1 <- sqrt(var(Precio_DB_m1[(nB-1),])))
+(sd_DBt_m2 <- sqrt(var(Precio_DB_m2[(nB-1),])))
+(sd_DTt_m1 <- sqrt(var(Precio_DT_m1[(nT-1),])))
+(sd_DTt_m2 <- sqrt(var(Precio_DT_m2[(nT-1),])))
+```
+La media de los precios de Bitcoin y Tesla se aproximan mientras que la desviación estandar de los mismos es 20 y 40 veces mayor al usar el primer método.
+
+Obtuvimos la posible pérdida máxima que se puede tener al 99.5% de confianza en un año.
+```{r}
+# Perdida máxima al 99.5% de confianza 
+(VaR_DBt_m1<- quantile(L_DB_m1[(nB-1),], .995)) # P(L<l)=0.995
+(VaR_DBt_m2<- quantile(L_DB_m2[(nB-1),], .995))
+(VaR_DTt_m1 <- quantile(L_DT_m1[(nT-1),], .995))
+(VaR_DTt_m2<- quantile(L_DT_m2[(nT-1),], .995))
+```
+Podemos observar que la proyección de los precios de Tesla a un año con el segundo método nos da una ganancia mínima de 1.73 dólares mientras que en las demás proyecciones se observa una pérdida máxima mayor a 0. 
+Las proyecciones de los precios a un año son menores con el primer método que con el segundo.
+
+Graficamos la distribución que tienen los precios y la variable de pérdida en un año.
+```{r}
+PB1t <- as.data.frame(Precio_DB_m1[(nB-1),])
+PB2t<- as.data.frame(Precio_DB_m2[(nB-1),])
+PT1t <- as.data.frame(Precio_DT_m1[(nT-1),])
+PT2t <- as.data.frame(Precio_DT_m2[(nT-1),])
+
+LB1t <- as.data.frame(L_DB_m1[(nB-1),])
+LB2t <- as.data.frame(L_DB_m2[(nB-1),])
+LT1t <- as.data.frame(L_DT_m1[(nT-1),])
+LT2t <- as.data.frame(L_DT_m2[(nT-1),])
+
+g1 <- ggplot(PB1t, aes(x=Precio_DB_m1[(nB-1),])) +
+  geom_histogram(aes(y=..density..),col="black", fill="grey", size=0.25) + 
+  xlab("Precios BTC") + ylab("Densidad") + 
+  geom_density(aes(y=..density..),color="red",size=.3)+
+  geom_vline(xintercept=mu_DBt_m1, col="blue", size=0.25)+
+  geom_vline(xintercept=mu_DBt_m1+sd_DBt_m1, col="maroon1", size=0.25)+
+  geom_vline(xintercept=mu_DBt_m1-sd_DBt_m1, col="maroon1", size=0.25)
+
+g2 <- ggplot(LB1t, aes(x=L_DB_m1[(nB-1),])) + 
+  geom_histogram(aes(y=..density..),col="black", fill="grey", size=0.25)+ 
+  xlab("Pérdida BTC") + ylab("Densidad") +
+  geom_density(aes(y=..density..),color="red",size=.3)+ 
+  geom_vline(xintercept=VaR_DBt_m1, col="limegreen", size=0.25)
+
+grid.arrange(g1,g2, top="Distribución del modelo 1 al tiempo t", ncol=2)
+
+g1 <- ggplot(PB2t, aes(x=Precio_DB_m2[(nB-1),])) + 
+  geom_histogram(aes(y=..density..), col="black", fill="grey", size=0.25) + 
+  xlab("Precios BTC") + ylab("Densidad") +
+  geom_density(aes(y=..density..),color="red",size=.3)+ 
+  geom_vline(xintercept=mu_DBt_m2, col="blue", size=0.25)+ 
+  geom_vline(xintercept=mu_DBt_m2+sd_DBt_m2, col="maroon1", size=0.25)+ 
+  geom_vline(xintercept=mu_DBt_m2-sd_DBt_m2, col="maroon1", size=0.25)
+
+g2 <- ggplot(LB2t, aes(x=L_DB_m2[(nB-1),])) + 
+  geom_histogram(aes(y=..density..),col="black", fill="grey", size=0.25)+ 
+  xlab("Pérdida BTC") + ylab("Densidad") +
+  geom_density(aes(y=..density..),color="red",size=.3)+ 
+  geom_vline(xintercept=VaR_DBt_m2, col="limegreen", size=0.25)
+
+grid.arrange(g1,g2, top="Distribución del modelo 2 al tiempo t", ncol=2)
+
+g1 <- ggplot(PT1t, aes(x=Precio_DT_m1[(nT-1),])) + 
+  geom_histogram(aes(y=..density..), col="black", fill="grey", size=0.25) + 
+  xlab("Precios TSLA") + ylab("Densidad") +
+  geom_density(aes(y=..density..),color="red",size=.3)+
+  geom_vline(xintercept=mu_DTt_m1, col="blue", size=0.25)+ 
+  geom_vline(xintercept=mu_DTt_m1+sd_DTt_m1, col="maroon1", size=0.25)+ 
+  geom_vline(xintercept=mu_DTt_m1-sd_DTt_m1, col="maroon1", size=0.25)
+
+g2 <- ggplot(LT1t, aes(x=L_DT_m1[(nT-1),])) + 
+  geom_histogram(aes(y=..density..),col="black", fill="grey", size=0.25)+ 
+  xlab("Pérdida TSLA") + ylab("Densidad") +
+  geom_density(aes(y=..density..),color="red",size=.3)+ 
+  geom_vline(xintercept=VaR_DTt_m1, col="limegreen", size=0.25)
+
+grid.arrange(g1,g2, top="Distribución del modelo 1 al tiempo t", ncol=2)
+
+g1 <- ggplot(PT2t, aes(x=Precio_DT_m2[(nT-1),])) +
+  geom_histogram(aes(y=..density..), col="black", fill="grey", size=0.25) +
+  xlab("Precios TSLA") + ylab("Densidad") +
+  geom_density(aes(y=..density..),color="red",size=.3)+ 
+  geom_vline(xintercept=mu_DTt_m2, col="blue", size=0.25)+ 
+  geom_vline(xintercept=mu_DTt_m2+sd_DTt_m2, col="maroon1", size=0.25)+ 
+  geom_vline(xintercept=mu_DTt_m2-sd_DTt_m2, col="maroon1", size=0.25)
+
+g2 <- ggplot(LT2t, aes(x=L_DT_m2[(nT-1),])) + 
+  geom_histogram(aes(y=..density..),col="black", fill="grey", size=0.25)+ 
+  xlab("Pérdida TSLA") + ylab("Densidad") +
+  geom_density(aes(y=..density..),color="red",size=.3)+ 
+  geom_vline(xintercept=VaR_DTt_m2, col="limegreen", size=0.25)
+
+grid.arrange(g1,g2, top="Distribución del modelo 2 al tiempo t", ncol=2)
+
+```
+Observamos que los precios, y por ende, la variable de pérdida a un año, se comporta como una normal.
+
+```{r}
+# Monte Carlo Crudo 
+(PGB1t <- length(which(L_DB_m1[(nB-1),]<0))/length(L_DB_m1[(nB-1),])) # prob de ganancia
+(PGB2t <- length(which(L_DB_m2[(nB-1),]<0))/length(L_DB_m2[(nB-1),]))
+(PGT1t <- length(which(L_DT_m1[(nT-1),]<0))/length(L_DT_m1[(nT-1),]))
+(PGT2t <- length(which(L_DT_m2[(nT-1),]<0))/length(L_DT_m2[(nT-1),]))
+```
+La probabilidad de ganancia, entiendase como la probabilidad de tener un precio mayor en un año, únicamente es mayor al 50% con la aproximacion de los precios de Tesla usando el método 2.
+Por lo tanto, se puede deducir que el método 2 es optimista para Tesla porque considera el aumento de precios en los últimos meses y por otro lado con este método en Bitcoin se puede observar una disminución en la probabilidad de ganancia debido
+a que los precios en los últimos meses bajaron.
+
+## AJUSTE A UNA NORMAL 
+Se utilizarán distintos métodos y herramientas de R.
+
+
+1. qq-plot (quantile-quantile plot): Es una gráfica de probabilidad que, como su nombre lo indica, compara los cuantiles de la muestra que obtuvimos a través de nuestra simulación contra los *cuantiles teóricos de la población*.
+Esta gráfica consiste en los puntos $(X_{(i)},q_i)$ donde $q_i$ es el i-ésimo cuantil de la distribución objetivo. 
+
+2. pp-plot (probability–probability plot o percent–percent plot o P value plot) también es una herramienta visual que compara la probabilidad teórica contra la que obtuvimos en nuestra muestra. 
+
+
+3. Ajuste por máxima verosimilitud
+
+Proceso del ajuste por máxima verosimilitud $X \sim N(\mu,\theta^2)$ $\\$
+
+$L = \prod\limits_{i=1}^{N} \frac{1}{\sqrt{2\pi\theta^2}} e^{-\frac{1}{2\theta}(x_i-\mu)^2}$ $\\$
+
+$\Rightarrow$ $L = \frac{1}{(2\pi)^{\frac{N}{2}}} (\sigma^2)^\frac{-N}{2} e^{-\frac{1}{2\sigma^2}\sum\limits_{i=1}^{N} (x_i-\mu)^2}$ $\\$
+
+Aplicamos $log(L)$ $\\$
+$l = log(L) = -\frac{N}{2}ln(2\pi)-\frac{N}{2}ln(\sigma^2)-\frac{1}{2\sigma^2}\sum\limits_{i=1}^{N}(x_i-\mu)^2$ $\\$
+
+Sacamos las parciales $\\$
+$\frac{\partial l}{\partial \theta^2} = -\frac{N}{2} \frac{1}{\theta^2}+\frac{1}{2\theta^2}\sum\limits_{i=1}^{N}(x_i-\mu)^2$ $\\$
+
+$\frac{\partial l}{\partial \mu} = -\frac{1}{2\theta^2}2\sum\limits_{i=1}^{N}(x_i-\mu)(-1) = \frac{1}{\theta^2}\sum\limits_{i=1}^{N}(x_i-\mu)$ $\\$
+
+$\frac{\partial l}{\partial\mu\partial\theta^2} = \frac{\partial l}{\partial\theta^2\partial\mu} = -\frac{1}{\theta^2}\sum\limits_{i=1}^{N}(x_i-\mu)$ $\\$
+
+Entonces, $\frac{\partial l}{\partial \hat{\theta}^2} = 0$ $\rightleftarrows$ $\frac{N}{2}\frac{1}{\hat{\theta}^2} = \frac{1}{2\hat{\theta}^2}\sum\limits_{i=1}^{N}(x_i-\mu)^2$ $\\$
+Y así tenemos lo siguiente, $\\$
+$N = \frac{1}{\hat{\theta}^2}\sum\limits_{i=1}^{N}(x_i-\mu)^2$ $\\$
+
+$\hat{\theta}^2 = \frac{1}{N}\sum\limits_{i=1}^{N}(x_i-\mu)^2$ $\\$
+
+Finalmente, $\\$
+$\frac{\partial l}{\partial \mu} = 0$ $\rightleftarrows$ $-\frac{1}{\hat{\theta}^2}\sum\limits_{i=1}^{N}(x_i-\hat{\mu}) = 0$ $\\$
+
+Por lo tanto, $\\$
+$\hat{\mu} = \frac{1}{N} \sum\limits_{i=1}^{N}x_i$ $\\$
+                
+Tal que, $|J|_{(\mu,\theta^2) = (\hat{\mu},\hat{\theta^2})} < 0$ $\\$
+
+Para comparar entre modelos que tienen distinta complejidad, se prefieren medidas que tomen en cuenta el ajuste; pero a la vez penalicen por el número de parámetros.
+
+Las medidas más usadas son:
+
++ Criterio de Información de Akaike: $AIC = -2log(L)+2k$ 
++ Criterio de Información Bayesiano: $BIC = -2log(L) + kln(n)$
+
+Donde $log(L)$ es la verosimilitud del modelo evaluada en los parámetros que la hacen máxima, $k$ es el número de parámetros y $n$ el número de registros. 
+
+Distribución de los precios BTC a un año del Modelo 1
+```{r}
+library(fitdistrplus)
+g1 <- ggplot(PB1t, aes(x=Precio_DB_m1[(nB-1),])) +
+  geom_histogram(bins=20,aes(y=..density..),color="black", fill="lightpink",size=.25) +
+  labs(title="Histograma")+xlab("Precios BTC")
+g2 <- ggplot(PB1t, aes(x=Precio_DB_m1[(nB-1),]))  + 
+  geom_boxplot(col="lightpink") + 
+  labs(title="Diagrama de caja y brazo")+xlab("Precios BTC")
+grid.arrange(g1,g2,ncol=2 )
+
+descdist(Precio_DB_m1[(nB-1),],boot = 1000)
+
+fnorm = fitdist(Precio_DB_m1[(nB-1),], dnorm) 
+summary(fnorm)
+
+layout(matrix(1:4, c(1,2,3,4), byrow = T))
+denscomp(list(fnorm), legendtext =c("Norm")) 
+qqcomp(list(fnorm), legendtext =c("Norm")) 
+cdfcomp(list(fnorm), legendtext =c("Norm")) 
+ppcomp(list(fnorm), legendtext =c("Norm")) 
+```
+Los precios calculados a un año de Bitcoin con el modelo 1 en promedio va desde 7952.274  hasta 10543.27  con un rango de 2590.996, con media de 9228.965 y mediana de 9221.078 similares lo cual indica que la distribución no es sesgada (sesgo=0.102841). Su curtosis es de 2.998116, indicando que sus colas aproximan a las de una normal.
+
+Se puede observar en ***el histograma*** y en ***el diagrama de caja y brazo*** que las colas son similares a las de una normal, que la distribución no es sesgada porque los brazos son igual de largos y la cola tiene muy pocos datos aislados. 
+
+La qq-plot sigue la recta de identidad, es decir, los datos siguen fielmente la distribución objetivo. 
+
+
+Distribución de los precios BTC del Modelo 2 al tiempo t 
+```{r}
+g1 <- ggplot(PB2t, aes(x=Precio_DB_m2[(nB-1),])) +
+  geom_histogram(bins=20,aes(y=..density..),color="black", fill="lightblue",size=.25) +
+  labs(title="Histograma")+xlab("Precios BTC")
+g2 <- ggplot(PB2t, aes(x=Precio_DB_m2[(nB-1),]))  + 
+  geom_boxplot(col="lightblue") + 
+  labs(title="Diagrama de caja y brazo")+xlab("Precios BTC")
+grid.arrange(g1,g2,ncol=2 )
+
+descdist(Precio_DB_m2[(nB-1),],boot = 1000)
+
+# Ajuste a una Normal
+fnorm = fitdist(Precio_DB_m2[(nB-1),], dnorm) 
+summary(fnorm)
+
+layout(matrix(1:4, c(1,2,3,4), byrow = T))
+denscomp(list(fnorm), legendtext =c("Norm")) 
+qqcomp(list(fnorm), legendtext =c("Norm")) 
+cdfcomp(list(fnorm), legendtext =c("Norm")) 
+ppcomp(list(fnorm), legendtext =c("Norm")) 
+```
+Los precios calculados a un año de Bitcoin con el modelo 2 en promedio va desde 9207.847  hasta 9328.497 con un rango de 120.65 *"pequeño"*, con media de 9263 y mediana de 9263.19 similares lo cual indica que la distribución no es sesgada (sesgo=-0.01233925). Su curtosis es de 2.992939, indicando que sus colas aproximan a las de una normal.
+Esto también se puede observar en ***el histograma*** y en ***el diagrama de caja y brazo***
+
+La qq-plot sigue la recta de identidad, es decir, los datos siguen fielmente la distribución objetivo. 
+
+Distribución de los precios TSLA del Modelo 1 al tiempo t 
+```{r}
+g1 <- ggplot(PT1t, aes(x=Precio_DT_m1[(nT-1),])) +
+  geom_histogram(bins=20,aes(y=..density..),color="black", fill="darksalmon",size=.25) +
+  labs(title="Histograma")+xlab("Precios TSLA")
+g2 <- ggplot(PT1t, aes(x=Precio_DT_m1[(nT-1),]))  + 
+  geom_boxplot(col="darksalmon") + 
+  labs(title="Diagrama de caja y brazo")+xlab("Precios TSLA")
+grid.arrange(g1,g2,ncol=2 )
+
+descdist(Precio_DT_m1[(nT-1),],boot = 1000)
+
+# Ajuste a una Normal
+fnorm = fitdist(Precio_DT_m1[(nT-1),], dnorm) 
+summary(fnorm)
+
+layout(matrix(1:4, c(1,2,3,4), byrow = T))
+denscomp(list(fnorm), legendtext =c("Norm")) 
+qqcomp(list(fnorm), legendtext =c("Norm")) 
+cdfcomp(list(fnorm), legendtext =c("Norm")) 
+ppcomp(list(fnorm), legendtext =c("Norm")) 
+```
+Los precios calculados a un año de Tesla con el modelo 1 en promedio va desde 3318.607 hasta 4542.784 con un rango de 1224.177, con media de 3880.791 y mediana de 3877.68 similares lo cual indica que la distribución no es sesgada (sesgo=0.1345006). Su curtosis es de 3.03925, indicando que sus colas aproximan a las de una normal.
+Esto también se puede observar en ***el histograma*** y en ***el diagrama de caja y brazo***
+
+La qq-plot sigue la recta de identidad, es decir, los datos siguen fielmente la distribución objetivo. 
+
+Distribución de los precios TSLA del Modelo 2 al tiempo t 
+```{r}
+g1 <- ggplot(PT2t, aes(x=Precio_DT_m2[(nT-1),])) +
+  geom_histogram(bins=20,aes(y=..density..),color="black", fill="darkseagreen3",size=.25) +
+  labs(title="Histograma")+xlab("Precios TSLA")
+g2 <- ggplot(PT2t, aes(x=Precio_DT_m2[(nT-1),]))  + 
+  geom_boxplot(col="darkseagreen3") + 
+  labs(title="Diagrama de caja y brazo")+xlab("Precios TSLA")
+grid.arrange(g1,g2,ncol=2 )
+
+descdist(Precio_DT_m2[(nT-1),],boot = 1000)
+
+# Ajuste a una Normal
+fnorm = fitdist(Precio_DT_m2[(nT-1),], dnorm) 
+summary(fnorm)
+
+layout(matrix(1:4, c(1,2,3,4), byrow = T))
+denscomp(list(fnorm), legendtext =c("Norm")) 
+qqcomp(list(fnorm), legendtext =c("Norm")) 
+cdfcomp(list(fnorm), legendtext =c("Norm")) 
+ppcomp(list(fnorm), legendtext =c("Norm")) 
+```
+Los precios calculados a un año de Tesla con el modelo 2 en promedio va desde 3897.849 hasta 3927.799  con un rango de 27.655, con media de 3911.532 y mediana de 3911.567 casi iguales lo cual indica que la distribución no es sesgada (sesgo=0.008837905). Su curtosis es de 2.949169, indicando que sus colas aproximan a las de una normal.
+Esto también se puede observar en ***el histograma*** y en ***el diagrama de caja y brazo***
+
+En todos los caso se observa que las observaciones se acercan considerablemente a las líneas en ***sus gráficas q-q y p-p***.
+Además, los estimadores del ajuste por máxima verosimilitud coinciden con los estimadores de momentos.
+Esto es, las funciónes de densidad empírica de los precios ajustan a una Normal. 
+
+Podemos concluir que es posible modelar la probabilidad de rendimientos futuros de las acciones utilizando una distribución normal en los precios y generando simulaciones de Monte Carlo con el Movimiento Browniano Geométrico como modelo subyacente del precio de las acciones. La precisión de las predicciones de tendencias podría mejorarse utilizando ponderaciones al calcular los parámetros para el modelo de movimiento browniano geométrico. 
